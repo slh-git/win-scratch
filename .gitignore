@@ -70,3 +70,8 @@ Desktop.ini
 # Ignore other IDE directories
 .idea/
 
+/win-scratch-vs2022.vcxproj
+/win-scratch-vs2022.vcxproj.filters
+
+# Ignore NuGet packages
+packages/
