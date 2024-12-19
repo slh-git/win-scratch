@@ -1,0 +1,72 @@
+# Visual Studio files
+.vscode/
+.vs/
+*.user
+*.suo
+*.vcxproj.user
+*.vcxproj.filters
+*.vcxproj.includepath.user
+*.vcxproj.tasklist.user
+*.vcxproj.user
+*.vcxproj.filters
+
+# Build artifacts
+Debug/
+Release/
+x64/
+x86/
+*.obj
+*.pch
+*.idb
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+*.log
+*.tlog
+
+# Temporary files
+*.tmp
+*.log
+*.tlog
+*.bak
+*.old
+~*.*
+
+# Generated files
+*.generated.h
+*.tlb
+*.tli
+*.h.generated
+
+# CMake files
+CMakeFiles/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+CMakeLists.txt.user
+
+# Ignore NuGet packages
+packages/
+
+# Ignore temporary signing keys
+*.pfx
+
+# Ignore build directories
+build/
+_build/
+
+# Ignore system-specific files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Ignore backup files
+*.bak
+*.swp
+
+# Ignore other IDE directories
+.idea/
+
