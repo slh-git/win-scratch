@@ -102,6 +102,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
+    <ClInclude Include="find_windows.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />

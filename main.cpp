@@ -1,102 +1,98 @@
 ﻿#include "pch.h"
-#include <windows.h>
+#include "find_windows.h"
 #include <iostream>
-#include <string>
-using namespace std;
-using namespace winrt;
+#include <windows.h>
+
 //using namespace Windows::Foundation;
 
+// Dimension Struct
+struct DimensionStruct {
+	int width;
+	int height;
+	void Print() {
+		wcout << L"Dimension Width: " << width << L" Dimension Height: " << height << endl;
+	}
+};
 
-// Print window information, bool for debug print all including hidden windows
-void PrintWindowInfo(HWND hwnd, std::wstring startingText, bool printAll) {
-	// Get the window title
-	wchar_t title[256];
-	GetWindowTextW(hwnd, title, sizeof(title) / sizeof(wchar_t));
-	// Get the process ID
-	DWORD dwProccess_id;
-	GetWindowThreadProcessId(hwnd, &dwProccess_id);
-	// Get the window class name
-	wchar_t windowClassName[256];
-	GetClassNameW(hwnd, windowClassName, sizeof(windowClassName) / sizeof(wchar_t));
+// Dimension Struct but with x and y location of where to scratchpad window will be placed
+struct WindowDimensionStruct {
+	int x;
+	int y;
+	int width;
+	int height;
+	WindowDimensionStruct() {
+		x = 0;
+		y = 0;
+		width = 200;
+		height = 200;
+	}
+	WindowDimensionStruct(int x, int y, int width, int height) {
+		this->x = x;
+		this->y = y;
+		this->width = width;
+		this->height = height;
+	}
+	// Constructor to set the width and height of the window
+	WindowDimensionStruct(int width, int height) {
+		x = 0;
+		y = 0;
+		this->width = width;
+		this->height = height;
+	}
+	void Print() {
+		wcout << L"Window Position: (" << x << L", " << y << L") "
+			<< L"Dimension Width: " << width << L" Dimension Height: " << height << endl;
+	}
+};
 
-	if (printAll == true) {
-		std::wcout << startingText << hwnd
-			<< L",\n Title: " << title
-			<< L",\n windowClassName: " << windowClassName
-			<< L",\n ProcessID: " << dwProccess_id
-			<< "\n\n\n" << std::endl;
+// Get the dimension of the monitor
+DimensionStruct GetMonitorDimension(HWND hwnd) {
+	HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+
+	MONITORINFO mi;
+	mi.cbSize = sizeof(mi);
+
+	DimensionStruct dim;
+
+	if(GetMonitorInfoW(hMonitor, &mi) !=0) {
+		dim.width = abs(mi.rcMonitor.right - mi.rcMonitor.left);
+		dim.height = abs(mi.rcMonitor.bottom - mi.rcMonitor.top);
 	}
 	else {
-		// only print the simple info
-		std::wcout << startingText << hwnd
-			<< L", \n Title: " << title
-			<< L",\n windowClassName: " << windowClassName
-			<< "\n" << std::endl;
+		wcerr << L"Error finding MonitorInfoW" << endl;
+		dim.width = 0;
+		dim.height = 0;
 	}
+	return dim;
 }
 
-// Callback function that is called for each child window
-BOOL CALLBACK EnumChildProc(HWND hwnd, LPARAM lParam) {
-	PrintWindowInfo(hwnd, L"Child window: ", false);
-	return TRUE; // Continue enumeration
+// Get the dimension of the window based on the percentage of the monitor
+WindowDimensionStruct GetWinDimensionByPercent(DimensionStruct monitorDim, int widthPercentage, int heightPercentage) {
+	return WindowDimensionStruct(
+		monitorDim.width * widthPercentage / 100 , 
+		monitorDim.height * heightPercentage / 100);
 }
-
-// Callback function that is called for each top-level window
-BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
-	bool includeChildWindows = *reinterpret_cast<bool*>(lParam);
-
-	PrintWindowInfo(hwnd, L"Top-level window: ", true);
-
-	// Enumerate child windows of the current top-level window if includeChildWindows is true
-	if (includeChildWindows) {
-		EnumChildWindows(hwnd, EnumChildProc, 0);
-	}
-	return TRUE; // Continue enumeration
-}
-
-
-void PrintWindows(bool includeChildWindows) {
-	// Enumerate all top-level windows
-	EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&includeChildWindows));
-	std::wcout << L"Finished listing windows." << std::endl;
-}
-
-// Callback function that is called for each top-level window
-BOOL CALLBACK EnumDesktopWindowsProc(HWND hwnd, LPARAM lParam) {
-
-	PrintWindowInfo(hwnd, L"Top-level window: ", true);
-
-	return TRUE; // Continue enumeration
-}
-
-// Print all windows on the desktop
-void PrintDesktopWindows(bool includeChildWindows) {
-	// Enumerate all top-level windows
-	EnumDesktopWindows(NULL, EnumDesktopWindowsProc, NULL);
-	std::wcout << L"Finished listing windows." << std::endl;
-}
-
-// if only one param needed set NULL for the other
-HWND SearchWindow(wstring windowClassName, wstring windowTitleName) {
-	// Find the window with the title "Calculator"
-	HWND parentHwnd = FindWindowW(windowClassName.c_str(), windowTitleName.c_str());
-	PrintWindowInfo(parentHwnd, L"Found window: ", true);
-	if (parentHwnd != NULL) {
-		std::wcout << L"Found window with classname " << windowClassName << L" and title: " << windowTitleName << std::endl;
-		PrintWindowInfo(parentHwnd, L"Found window: ", true);
-		return parentHwnd;
-	}
-	else {
-		std::wcout << L"Cannot find window with classname " << windowClassName << L" and title: " << windowTitleName << std::endl;
-		return NULL;
-	}
-	
-}
-
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
 int main() {
 	//PrintWindows(true);
 	PrintDesktopWindows(true);
-	HWND wezHwnd = SearchWindow(L"org.wezfurlong.wezterm", L"user");
+	HWND wezHwnd = SearchWindow(L"org.wezfurlong.wezterm", NULL);
+	if (wezHwnd == nullptr) {
+		wcerr << L"Error: Window not found" << endl;
+		return 1;
+	}
+	DimensionStruct monitorDim = GetMonitorDimension(wezHwnd);
+	monitorDim.Print();
+
+	WindowDimensionStruct winDim = GetWinDimensionByPercent(monitorDim, 100, 50);
+	std::wcout << L"Percentage w and h" << winDim.width << winDim.height << endl;
+
+
+
+	//Works TODO automate windows 
+	SetWindowPos(wezHwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_SHOWWINDOW);
+	Sleep(200);
+	SetWindowPos(wezHwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_HIDEWINDOW);
 	std::cin.get(); // Pause console
 
 	return 0;
