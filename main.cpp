@@ -1,99 +1,77 @@
 ﻿#include "pch.h"
-#include "find_windows.h"
 #include <iostream>
 #include <windows.h>
+#include "ui_utilities.h"
 
 //using namespace Windows::Foundation;
+static bool isWindowHidden = true;
+static HWND wezHwnd;
 
-// Dimension Struct
-struct DimensionStruct {
-	int width;
-	int height;
-	void Print() {
-		wcout << L"Dimension Width: " << width << L" Dimension Height: " << height << endl;
-	}
-};
+// The callback function for the WH_KEYBOARD_LL hook
+LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
+	//The wParam and lParam parameters contain information about a keyboard message. (https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc)	
+	if (nCode == HC_ACTION) {
+		PKBDLLHOOKSTRUCT keypress = (PKBDLLHOOKSTRUCT)lParam;
+		// Get the dimension of the monitor
+		DimensionStruct monitorDim = GetMonitorDimension(wezHwnd);
 
-// Dimension Struct but with x and y location of where to scratchpad window will be placed
-struct WindowDimensionStruct {
-	int x;
-	int y;
-	int width;
-	int height;
-	WindowDimensionStruct() {
-		x = 0;
-		y = 0;
-		width = 200;
-		height = 200;
-	}
-	WindowDimensionStruct(int x, int y, int width, int height) {
-		this->x = x;
-		this->y = y;
-		this->width = width;
-		this->height = height;
-	}
-	// Constructor to set the width and height of the window
-	WindowDimensionStruct(int width, int height) {
-		x = 0;
-		y = 0;
-		this->width = width;
-		this->height = height;
-	}
-	void Print() {
-		wcout << L"Window Position: (" << x << L", " << y << L") "
-			<< L"Dimension Width: " << width << L" Dimension Height: " << height << endl;
-	}
-};
+		// Get the dimension of the window based on the percentage of the monitor
+		WindowDimensionStruct winDim = GetWinDimensionByPercent(monitorDim, 100, 50);
+		switch (wParam){
+			// The WM_KEYDOWN message is posted to the window with the keyboard focus when a nonsystem key is pressed. A nonsystem key is a key that is pressed when the ALT key is not pressed.
+			case WM_KEYDOWN:
+				if (keypress->vkCode == VK_F1) {
+					wcout << L"F1 Pressed" << endl;
 
-// Get the dimension of the monitor
-DimensionStruct GetMonitorDimension(HWND hwnd) {
-	HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+					if (isWindowHidden) {
+						// Set the window position and 
+						SetWindowPos(wezHwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_SHOWWINDOW);
+						isWindowHidden = false;
+					}
+					else {
+						// Hide the window
+						SetWindowPos(wezHwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_HIDEWINDOW);
+						isWindowHidden = true;
+					}
 
-	MONITORINFO mi;
-	mi.cbSize = sizeof(mi);
+				}
+				if (wezHwnd == nullptr) {
+					wcerr << L"Error: Window not found" << endl;
+					return 1;
+				}
 
-	DimensionStruct dim;
-
-	if(GetMonitorInfoW(hMonitor, &mi) !=0) {
-		dim.width = abs(mi.rcMonitor.right - mi.rcMonitor.left);
-		dim.height = abs(mi.rcMonitor.bottom - mi.rcMonitor.top);
+				break;
+			case WM_SYSKEYDOWN:
+				break;
+			case WM_KEYUP:
+				break;
+			case WM_SYSKEYUP:
+				break;
+		}
 	}
-	else {
-		wcerr << L"Error finding MonitorInfoW" << endl;
-		dim.width = 0;
-		dim.height = 0;
-	}
-	return dim;
+	return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
-// Get the dimension of the window based on the percentage of the monitor
-WindowDimensionStruct GetWinDimensionByPercent(DimensionStruct monitorDim, int widthPercentage, int heightPercentage) {
-	return WindowDimensionStruct(
-		monitorDim.width * widthPercentage / 100 , 
-		monitorDim.height * heightPercentage / 100);
-}
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
+
 int main() {
 	//PrintWindows(true);
-	PrintDesktopWindows(true);
-	HWND wezHwnd = SearchWindow(L"org.wezfurlong.wezterm", NULL);
-	if (wezHwnd == nullptr) {
-		wcerr << L"Error: Window not found" << endl;
-		return 1;
+	//PrintDesktopWindows(true);
+	
+	wezHwnd = SearchWindow(L"org.wezfurlong.wezterm", NULL);
+
+
+
+	//WH_KEYBOARD_LL hook
+	HHOOK hHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, NULL, 0);
+
+	// Keep this app running until we're told to stop
+	MSG msg;
+	while (!GetMessage(&msg, NULL, NULL, NULL)) {    //this while loop keeps the hook
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
 	}
-	DimensionStruct monitorDim = GetMonitorDimension(wezHwnd);
-	monitorDim.Print();
 
-	WindowDimensionStruct winDim = GetWinDimensionByPercent(monitorDim, 100, 50);
-	std::wcout << L"Percentage w and h" << winDim.width << winDim.height << endl;
-
-
-
-	//Works TODO automate windows 
-	SetWindowPos(wezHwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_SHOWWINDOW);
-	Sleep(200);
-	SetWindowPos(wezHwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_HIDEWINDOW);
-	std::cin.get(); // Pause console
+	UnhookWindowsHookEx(hHook);
 
 	return 0;
 }
