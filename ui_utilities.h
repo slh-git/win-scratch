@@ -5,7 +5,6 @@
 #include <string>
 
 using namespace std;
-using namespace winrt;
 
 // Function declarations
 void PrintWindowInfo(HWND hwnd, wstring startingText, bool printAll);

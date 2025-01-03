@@ -1,0 +1,4 @@
+[Wezterm]
+classname = "org.wezfurlong.wezterm"
+height = 100
+weight = 50

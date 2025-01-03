@@ -1,11 +1,12 @@
 ﻿#include "pch.h"
-#include <iostream>
-#include <windows.h>
 #include "ui_utilities.h"
+#include "toml++/toml.hpp"
 
 //using namespace Windows::Foundation;
 static bool isWindowHidden = true;
 static HWND wezHwnd;
+
+// Use a struct to store the wezHwnd and the WindowDimensionStruct
 
 // The callback function for the WH_KEYBOARD_LL hook
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -16,7 +17,8 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 		DimensionStruct monitorDim = GetMonitorDimension(wezHwnd);
 
 		// Get the dimension of the window based on the percentage of the monitor
-		WindowDimensionStruct winDim = GetWinDimensionByPercent(monitorDim, 100, 50);
+		WindowDimensionStruct winDim = GetWinDimensionByPercent(monitorDim, 100,50);
+
 		switch (wParam){
 			// The WM_KEYDOWN message is posted to the window with the keyboard focus when a nonsystem key is pressed. A nonsystem key is a key that is pressed when the ALT key is not pressed.
 			case WM_KEYDOWN:
@@ -53,15 +55,60 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 }
 
 
+
+
+toml::table ParseToml(string filename) {
+	toml::table table;
+	try
+	{
+		table = toml::parse_file(filename);
+		std::cout << table << "\n";
+		
+	}
+	catch (const toml::parse_error& err)
+	{
+		std::cerr << "Parsing failed:\n" << err << "\n";
+		return toml::table(); // Return an empty table in case of error
+	}
+	return table;
+}
+
+toml::table ParseToml(string filename, int index) {
+	toml::table table;
+	try
+	{
+		table = toml::parse_file(filename);
+		std::cout << table << "\n";
+
+	}
+	catch (const toml::parse_error& err)
+	{
+		std::cerr << "Parsing failed:\n" << err << "\n";
+		return toml::table(); // Return an empty table in case of error
+	}
+	return table;
+}
+
+
 int main() {
 	//PrintWindows(true);
 	//PrintDesktopWindows(true);
-	
+	//toml::table tomlTable = ParseToml("config.toml");
+
+	//std::cout << tomlTable << "\n";
+	//tomlTable.for_each([](const toml::key& key, auto&& val)
+	//	{
+	//		std::cout << key << ": " << val << "\n";
+	//	});
+	//
+	//std::cout << tomlTable["Wezterm"]["classname"] << "\n";
 	wezHwnd = SearchWindow(L"org.wezfurlong.wezterm", NULL);
+	
 
 
 
-	//WH_KEYBOARD_LL hook
+
+	////WH_KEYBOARD_LL hook
 	HHOOK hHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, NULL, 0);
 
 	// Keep this app running until we're told to stop
@@ -71,7 +118,7 @@ int main() {
 		DispatchMessage(&msg);
 	}
 
-	UnhookWindowsHookEx(hHook);
-
+	//UnhookWindowsHookEx(hHook);
+	std::cin.get();
 	return 0;
 }
