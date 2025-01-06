@@ -1,12 +1,11 @@
 ﻿#include "pch.h"
 #include "ui_utilities.h"
 #include "toml++/toml.hpp"
-
+#include "vk_codes.h"
 //using namespace Windows::Foundation;
 static bool isWindowHidden = true;
 static HWND wezHwnd;
 
-// Use a struct to store the wezHwnd and the WindowDimensionStruct
 
 // The callback function for the WH_KEYBOARD_LL hook
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -55,8 +54,6 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 }
 
 
-
-
 toml::table ParseToml(string filename) {
 	toml::table table;
 	try
@@ -89,36 +86,60 @@ toml::table ParseToml(string filename, int index) {
 	return table;
 }
 
+// Use a struct to store the wezHwnd and the WindowDimensionStruct for multi-threading, add vkcode too
+struct WindowThread {
+	HWND hwnd;
+	WindowDimensionStruct winDim;
+	int vkCode;
+	WindowThread() {
+		this->hwnd = nullptr;
+		this->winDim = { 0,0,0,0 };
+		this->vkCode = -1;
+	}
+	WindowThread(LPCWSTR className, WindowDimensionStruct winDim, string keyName) {
+		this->hwnd = SearchWindow(L"org.wezfurlong.wezterm", NULL);;
+		this->winDim = winDim;
+		this->vkCode = VKCodes::getVKCode(keyName);
+	}
+	int ScratchpadSetup() {
+		if (this->hwnd == nullptr) {
+			wcerr << L"Error: Window not found" << endl;
+			return 1;
+		}
 
+		////WH_KEYBOARD_LL hook
+		HHOOK hHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, NULL, 0);
+
+		// Keep this app running until we're told to stop
+		MSG msg;
+		while (!GetMessage(&msg, NULL, NULL, NULL)) {    //this while loop keeps the hook
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+
+		UnhookWindowsHookEx(hHook);
+	}
+};
 int main() {
 	//PrintWindows(true);
 	//PrintDesktopWindows(true);
-	//toml::table tomlTable = ParseToml("config.toml");
 
-	//std::cout << tomlTable << "\n";
-	//tomlTable.for_each([](const toml::key& key, auto&& val)
-	//	{
-	//		std::cout << key << ": " << val << "\n";
-	//	});
-	//
-	//std::cout << tomlTable["Wezterm"]["classname"] << "\n";
-	wezHwnd = SearchWindow(L"org.wezfurlong.wezterm", NULL);
+	toml::table tomlTable = ParseToml("config.toml");
+
+	std::cout << tomlTable << "\n";
+	tomlTable.for_each([](const toml::key& key, auto&& val)
+		{
+			std::cout << key << ": " << val << "\n";
+		});
+	
+	std::cout << tomlTable["Wezterm"]["classname"] << "\n";
+	/*wezHwnd = SearchWindow(L"org.wezfurlong.wezterm", NULL);*/
 	
 
 
 
 
-	////WH_KEYBOARD_LL hook
-	HHOOK hHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, NULL, 0);
 
-	// Keep this app running until we're told to stop
-	MSG msg;
-	while (!GetMessage(&msg, NULL, NULL, NULL)) {    //this while loop keeps the hook
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
-	}
-
-	//UnhookWindowsHookEx(hHook);
 	std::cin.get();
 	return 0;
 }
