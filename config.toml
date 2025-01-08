@@ -1,4 +1,11 @@
 [Wezterm]
 classname = "org.wezfurlong.wezterm"
 height = 100
-weight = 50
+width = 50
+key = "F1"
+
+[Wezterm2]
+classname = "2org.wezfurlong.wezterm"
+height = 2100
+width = 250
+key = "F2"
