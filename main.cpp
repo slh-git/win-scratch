@@ -10,8 +10,10 @@ DWORD WINAPI WindowThreadFunction(LPVOID lpParam);
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
 
 // Global variables
-DWORD tlsIndex;
-// The callback function for the WH_KEYBOARD_LL hook
+// Thread-local storage index for the WindowThread object
+DWORD tlsIndex; 
+/* After alloc it should automatically pull from each thread?*/
+
 
 
 toml::table ParseToml(string filename) {
@@ -55,10 +57,13 @@ struct WindowThread {
 	int vkCode;
 	HANDLE hThread;
 	int TLSIndex;
+	bool isWindowHidden;
 	WindowThread() {
 		this->hwnd = nullptr;
 		this->winDim = { 0,0,0,0 };
 		this->vkCode = -1;
+		this->hThread = nullptr;
+		this->isWindowHidden = true;
 	}
 
 	WindowThread(LPCWSTR className, WindowDimensionStruct winDim, string keyName, int tlsIndex) {
@@ -70,18 +75,26 @@ struct WindowThread {
 		{
 			printf("Failed to create hthread. Error: %lu\n", GetLastError());
 		}
-		this->TLSIndex = tlsIndex;
-
+		this->isWindowHidden = true;
 	}
 };
+
 DWORD WINAPI WindowThreadFunction(LPVOID lpParam) {
 	WindowThread* windowThread = (WindowThread*)lpParam;
 	if (windowThread->hwnd == nullptr) {
 		wcerr << L"Error: Window not found" << endl;
 		return 1;
 	}
+
 	printf("windowThread tlsindex= %d\n", windowThread->TLSIndex);
 
+	// Set thread-specific data in TLS
+	if (!TlsSetValue(tlsIndex, windowThread))
+	{
+		printf("Failed to set TLS value.\n");
+		free(windowThread);
+		return 1;
+	}
 
 	//WH_KEYBOARD_LL hook
 	HHOOK hHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, NULL, 0);
@@ -97,54 +110,70 @@ DWORD WINAPI WindowThreadFunction(LPVOID lpParam) {
 	return 1;
 }
 
+// The callback function for the WH_KEYBOARD_LL hook
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
-	//	//The wParam and lParam parameters contain information about a keyboard message. (https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc)	
-	//	if (nCode == HC_ACTION) {
-	//		PKBDLLHOOKSTRUCT keypress = (PKBDLLHOOKSTRUCT)lParam;
-	//		// Get the dimension of the monitor
-	//		DimensionStruct monitorDim = GetMonitorDimension(wezHwnd);
-	//
-	//		// Get the dimension of the window based on the percentage of the monitor
-	//		WindowDimensionStruct winDim = GetWinDimensionByPercent(monitorDim, 100, 50);
-	//
-	//		switch (wParam) {
-	//			// The WM_KEYDOWN message is posted to the window with the keyboard focus when a nonsystem key is pressed. A nonsystem key is a key that is pressed when the ALT key is not pressed.
-	//		case WM_KEYDOWN:
-	//			if (keypress->vkCode == vkCode) {
-	//				wcout << L"F1 Pressed" << endl;
-	//
-	//				if (isWindowHidden) {
-	//					// Set the window position and 
-	//					SetWindowPos(wezHwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_SHOWWINDOW);
-	//					isWindowHidden = false;
-	//				}
-	//				else {
-	//					// Hide the window
-	//					SetWindowPos(wezHwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_HIDEWINDOW);
-	//					isWindowHidden = true;
-	//				}
-	//
-	//			}
-	//			if (wezHwnd == nullptr) {
-	//				wcerr << L"Error: Window not found" << endl;
-	//				return 1;
-	//			}
-	//
-	//			break;
-	//		case WM_SYSKEYDOWN:
-	//			break;
-	//		case WM_KEYUP:
-	//			break;
-	//		case WM_SYSKEYUP:
-	//			break;
-	//		}
-	//	}
+		//The wParam and lParam parameters contain information about a keyboard message. (https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc)	
+	//The wParam parameter specifies the virtual-key code of the key that generated the keystroke message.	
+		if (nCode == HC_ACTION) {
+			// Retrieve the WindowThread object from TLS
+			WindowThread* windowThread = (WindowThread*)TlsGetValue(tlsIndex);
+			if (windowThread == nullptr) {
+				wcerr << L"Error: Failed to retrieve TLS value" << endl;
+				return CallNextHookEx(NULL, nCode, wParam, lParam);
+			}
+			
+			PKBDLLHOOKSTRUCT keypress = (PKBDLLHOOKSTRUCT)lParam;
+			// Get the dimension of the monitor
+			DimensionStruct monitorDim = GetMonitorDimension(windowThread->hwnd);
+	
+			// Get the dimension of the window based on the percentage of the monitor
+			WindowDimensionStruct winDim = GetWinDimensionByPercent(monitorDim, 100, 50);
+	
+			switch (wParam) {
+				// The WM_KEYDOWN message is posted to the window with the keyboard focus when a nonsystem key is pressed. A nonsystem key is a key that is pressed when the ALT key is not pressed.
+			case WM_KEYDOWN:
+				if (keypress->vkCode == windowThread->vkCode) {
+					wcout << L"F1 Pressed" << endl;
+					// Get the handle of the window	
+					if (windowThread->isWindowHidden) {
+						// Set the window position and 
+						SetWindowPos(windowThread->hwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_SHOWWINDOW);
+						windowThread->isWindowHidden = false;
+					}
+					else {
+						// Hide the window
+						SetWindowPos(windowThread->hwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_HIDEWINDOW);
+						windowThread->isWindowHidden = true;
+					}
+	
+				}
+				if (windowThread->hwnd == nullptr) {
+					wcerr << L"Error: Window not found" << endl;
+					return 1;
+				}
+	
+				break;
+			case WM_SYSKEYDOWN:
+				break;
+			case WM_KEYUP:
+				break;
+			case WM_SYSKEYUP:
+				break;
+			}
+		}
 		return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
 int main() {
-	//PrintWindows(true);
-	//PrintDesktopWindows(true);
+	PrintWindows(true);
+	PrintDesktopWindows(true);
+	//Windows Thread experiment 
+	tlsIndex = TlsAlloc();
+	if (tlsIndex == TLS_OUT_OF_INDEXES)
+	{
+		printf("Failed to allocate TLS index.\n");
+		return 1;
+	}
 
 	toml::table tomlTable = ParseToml("config.toml");
 	vector<WindowThread> scratchpadThreads;
@@ -170,18 +199,10 @@ int main() {
 
 
 	std::cout << tomlTable["Wezterm"]["classname"] << "\n";
-	/*wezHwnd = SearchWindow(L"org.wezfurlong.wezterm", NULL);*/
 	
 
 
-	//Windows Thread experiment 
-	tlsIndex = TlsAlloc();
-	if (tlsIndex == TLS_OUT_OF_INDEXES)
-	{
-		printf("Failed to allocate TLS index.\n");
-		return 1;
-	}
-	
+
 
 	// spawn the threads 
 	for (int i = 0; i < tomlTable.size(); i++) {
