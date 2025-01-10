@@ -7,7 +7,7 @@
 
 class VKCodes {
 public:
-    static std::map<std::string, int> vkCodeMap;
+    static std::map<std::string, unsigned int> vkCodeMap;
 
     static int getVKCode(const std::string& vkName) {
         //use find so won't insert if not found
@@ -20,7 +20,7 @@ public:
 };
 
 // Define the map to store the VK codes
-std::map<std::string, int> VKCodes::vkCodeMap = {
+std::map<std::string, unsigned int> VKCodes::vkCodeMap = {
     {"VK_LBUTTON", 0x01},  // Left mouse button
     {"VK_RBUTTON", 0x02},  // Right mouse button
     {"VK_CANCEL", 0x03},  // Control-break processing

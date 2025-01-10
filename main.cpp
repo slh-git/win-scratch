@@ -4,6 +4,8 @@
 #include "vk_codes.h"
 #include <thread>
 #include <vector>
+#include <locale>
+#include <codecvt>
 //using namespace Windows::Foundation;
 // Function declaration
 DWORD WINAPI WindowThreadFunction(LPVOID lpParam);
@@ -66,10 +68,12 @@ struct WindowThread {
 		this->isWindowHidden = true;
 	}
 
-	WindowThread(LPCWSTR className, WindowDimensionStruct winDim, string keyName, int tlsIndex) {
-		this->hwnd = SearchWindow(L"org.wezfurlong.wezterm", NULL);;
+	WindowThread(string className, WindowDimensionStruct winDim, string keyName) {
+		wstring_convert<codecvt_utf8_utf16<wchar_t>> converter;
+		this->hwnd = SearchWindow(converter.from_bytes(className).c_str(), NULL);;
 		this->winDim = winDim;
 		this->vkCode = VKCodes::getVKCode(keyName);
+
 		this->hThread = CreateThread(NULL, 0, WindowThreadFunction, this, 0, NULL);
 		if (!hThread)
 		{
@@ -190,10 +194,9 @@ int main() {
 			static_cast<int>(subTable->at("height").as_integer()->get())
 		};
 		scratchpadThreads.emplace_back(
-			(LPCWSTR)subTable->at("classname").as_string(),
+			subTable->at("classname").as_string()->get(),
 			winDim,
-			subTable->get_as<std::string>("key")->get(),
-			scratchpadThreads.size()
+			subTable->get_as<std::string>("key")->get()
 		);
 	}
 
@@ -206,9 +209,9 @@ int main() {
 
 	// spawn the threads 
 	for (int i = 0; i < tomlTable.size(); i++) {
-		/*std::cout << "Window " << i << ":\n";
+		std::cout << "Window " << i << ":\n";
 		scratchpadThreads[i].winDim.Print();
-		std::cout << "VK Code: " << scratchpadThreads[i].vkCode << "\n";*/
+		std::cout << "VK Code: " << scratchpadThreads[i].vkCode << "\n";
 	}
 
 
