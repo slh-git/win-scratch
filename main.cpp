@@ -6,14 +6,50 @@
 #include <vector>
 #include <locale>
 #include <codecvt>
-//using namespace Windows::Foundation;
+#include <atomic>
 // Function declaration
 DWORD WINAPI WindowThreadFunction(LPVOID lpParam);
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
+// Use a struct to store the wezHwnd and the WindowDimensionStruct for multi-threading, add vkcode too
+struct WindowThread {
+	HWND hwnd;
+	WindowDimensionStruct winDim;
+	int vkCode;
+	HANDLE hThread;
+	int TLSIndex;
+	bool isWindowHidden;
+	HHOOK hHook;
+	WindowThread() {
+		this->hwnd = nullptr;
+		this->winDim = { 0,0,0,0 };
+		this->vkCode = -1;
+		this->hThread = nullptr;
+		this->isWindowHidden = true;
+		this->hHook = NULL;
+	}
+
+	WindowThread(string className, WindowDimensionStruct winDim, string keyName) {
+		wstring_convert<codecvt_utf8_utf16<wchar_t>> converter;
+		this->hwnd = SearchWindow(converter.from_bytes(className).c_str(), NULL);;
+		this->winDim = winDim;
+		this->vkCode = VKCodes::getVKCode(keyName);
+		this->hHook = NULL;
+		this->hThread = CreateThread(NULL, 0, WindowThreadFunction, this, 0, NULL);
+		if (!hThread)
+		{
+			printf("Failed to create hthread. Error: %lu\n", GetLastError());
+		}
+		this->isWindowHidden = true;
+	}
+};
+
 
 // Global variables
 // Thread-local storage index for the WindowThread object
 DWORD tlsIndex; 
+vector<WindowThread> scratchpadThreads;
+atomic<bool> g_Running = TRUE;
+
 /* After alloc it should automatically pull from each thread?*/
 
 
@@ -52,37 +88,6 @@ toml::table ParseToml(string filename, int index) {
 
 
 
-// Use a struct to store the wezHwnd and the WindowDimensionStruct for multi-threading, add vkcode too
-struct WindowThread {
-	HWND hwnd;
-	WindowDimensionStruct winDim;
-	int vkCode;
-	HANDLE hThread;
-	int TLSIndex;
-	bool isWindowHidden;
-	WindowThread() {
-		this->hwnd = nullptr;
-		this->winDim = { 0,0,0,0 };
-		this->vkCode = -1;
-		this->hThread = nullptr;
-		this->isWindowHidden = true;
-	}
-
-	WindowThread(string className, WindowDimensionStruct winDim, string keyName) {
-		wstring_convert<codecvt_utf8_utf16<wchar_t>> converter;
-		this->hwnd = SearchWindow(converter.from_bytes(className).c_str(), NULL);;
-		this->winDim = winDim;
-		this->vkCode = VKCodes::getVKCode(keyName);
-
-		this->hThread = CreateThread(NULL, 0, WindowThreadFunction, this, 0, NULL);
-		if (!hThread)
-		{
-			printf("Failed to create hthread. Error: %lu\n", GetLastError());
-		}
-		this->isWindowHidden = true;
-	}
-};
-
 DWORD WINAPI WindowThreadFunction(LPVOID lpParam) {
 	WindowThread* windowThread = (WindowThread*)lpParam;
 	if (windowThread->hwnd == nullptr) {
@@ -105,12 +110,17 @@ DWORD WINAPI WindowThreadFunction(LPVOID lpParam) {
 
 	// Keep this app running until we're told to stop
 	MSG msg;
-	while (!GetMessage(&msg, NULL, NULL, NULL)) {    //this while loop keeps the hook
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+	while (g_Running.load(memory_order_relaxed)) {
+		// Process messages in the queue
+		if (PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE)) {
+			if (msg.message == WM_QUIT) {
+				break;
+			}
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
 	}
-
-	UnhookWindowsHookEx(hHook);
+	
 	return 1;
 }
 
@@ -168,7 +178,54 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 		return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
+BOOL WINAPI consoleHandler(DWORD signal) {
+
+	if (signal == CTRL_C_EVENT || signal == CTRL_CLOSE_EVENT) {
+		printf("Initiating graceful shutdown...\n");
+		// Cleanup and close the program
+		g_Running.store(FALSE, memory_order_relaxed);
+
+		for (auto& thread : scratchpadThreads) {
+			if (UnhookWindowsHookEx(thread.hHook)) {
+				printf("Successfully unhooked keyboard hook for thread\n");
+				thread.hHook = NULL;
+			}
+			else {
+				printf("Failed to unhook keyboard hook. Error: %lu\n", GetLastError());
+			}
+		}
+
+		for (auto& thread : scratchpadThreads) {
+			if (thread.hThread) {
+				PostThreadMessage(GetThreadId(thread.hThread), WM_QUIT, 0, 0);
+			}
+		}
+		// final wait before shutdown
+		for (auto& thread : scratchpadThreads) {
+			if (thread.hThread) {
+				// Wait with timeout
+				DWORD waitResult = WaitForSingleObject(thread.hThread, 1000);
+				if (waitResult == WAIT_TIMEOUT) {
+					printf("Warning: Thread failed to exit within timeout\n");
+				}
+				CloseHandle(thread.hThread);
+				thread.hThread = nullptr;
+			}
+		}
+		if (tlsIndex != TLS_OUT_OF_INDEXES) {
+			TlsFree(tlsIndex);
+		}
+		printf("Shutdown complete\n");
+		return TRUE;
+		
+	}
+	return FALSE;
+}
+
+
+
 int main() {
+
 	PrintWindows(true);
 	PrintDesktopWindows(true);
 	//Windows Thread experiment 
@@ -178,13 +235,18 @@ int main() {
 		printf("Failed to allocate TLS index.\n");
 		return 1;
 	}
-
+	// Set up console handler for graceful shutdown
+	if (!SetConsoleCtrlHandler(consoleHandler, TRUE)) {
+		printf("ERROR: Could not set control handler\n");
+		return 1;
+	}
 	toml::table tomlTable = ParseToml("config.toml");
-	vector<WindowThread> scratchpadThreads;
+	
 	scratchpadThreads.reserve(tomlTable.size()); // Reserve space for efficiency
 
 	std::cout << tomlTable << "\n";
 
+	// Iterate through the toml table to create threads
 	for (const auto& [tableName, subNode] : tomlTable) {
 		std::cout << tableName << "\n";
 
@@ -204,10 +266,7 @@ int main() {
 	std::cout << tomlTable["Wezterm"]["classname"] << "\n";
 	
 
-
-
-
-	// spawn the threads 
+	// testing msg
 	for (int i = 0; i < tomlTable.size(); i++) {
 		std::cout << "Window " << i << ":\n";
 		scratchpadThreads[i].winDim.Print();
@@ -218,6 +277,13 @@ int main() {
 
 
 	std::cin.get();
+	// Wait for all thread
+	for (auto& thread : scratchpadThreads) {
+		WaitForSingleObject(thread.hThread, INFINITE);
+		CloseHandle(thread.hThread);
+	}
+	TlsFree(tlsIndex);
+
 	return 0;
 
 }
