@@ -10,13 +10,21 @@
 // Function declaration
 DWORD WINAPI WindowThreadFunction(LPVOID lpParam);
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
+std::string wstring_to_utf8(const std::wstring& wstr);
+std::wstring utf8_to_wstring(const std::string& str);
+struct WindowThread;
+
+// Global variables
+DWORD tlsIndex; // Thread-local storage index for the WindowThread object
+vector<WindowThread> scratchpadThreads;
+atomic<bool> g_Running = TRUE;
+
 // Use a struct to store the wezHwnd and the WindowDimensionStruct for multi-threading, add vkcode too
 struct WindowThread {
 	HWND hwnd;
 	WindowDimensionStruct winDim;
-	int vkCode;
+	unsigned int vkCode;
 	HANDLE hThread;
-	int TLSIndex;
 	bool isWindowHidden;
 	HHOOK hHook;
 	WindowThread() {
@@ -26,11 +34,11 @@ struct WindowThread {
 		this->hThread = nullptr;
 		this->isWindowHidden = true;
 		this->hHook = NULL;
+
 	}
 
 	WindowThread(string className, WindowDimensionStruct winDim, string keyName) {
-		wstring_convert<codecvt_utf8_utf16<wchar_t>> converter;
-		this->hwnd = SearchWindow(converter.from_bytes(className).c_str(), NULL);;
+		this->hwnd = SearchWindow(utf8_to_wstring(className).c_str(), NULL);
 		this->winDim = winDim;
 		this->vkCode = VKCodes::getVKCode(keyName);
 		this->hHook = NULL;
@@ -44,23 +52,34 @@ struct WindowThread {
 };
 
 
-// Global variables
-// Thread-local storage index for the WindowThread object
-DWORD tlsIndex; 
-vector<WindowThread> scratchpadThreads;
-atomic<bool> g_Running = TRUE;
+// Function to convert UTF-8 string to wide string
+std::wstring utf8_to_wstring(const std::string& str) {
+	if (str.empty()) return std::wstring();
+	int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
+	std::wstring wstrTo(size_needed, 0);
+	MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstrTo[0], size_needed);
+	return wstrTo;
+}
 
-/* After alloc it should automatically pull from each thread?*/
+// Function to convert wide string to UTF-8 string
+std::string wstring_to_utf8(const std::wstring& wstr) {
+	if (wstr.empty()) return std::string();
+	int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
+	std::string strTo(size_needed, 0);
+	WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
+	return strTo;
+}
 
 
 
+// Function to parse the toml file
 toml::table ParseToml(string filename) {
 	toml::table table;
 	try
 	{
 		table = toml::parse_file(filename);
 		std::cout << table << "\n";
-		
+
 	}
 	catch (const toml::parse_error& err)
 	{
@@ -95,7 +114,6 @@ DWORD WINAPI WindowThreadFunction(LPVOID lpParam) {
 		return 1;
 	}
 
-	printf("windowThread tlsindex= %d\n", windowThread->TLSIndex);
 
 	// Set thread-specific data in TLS
 	if (!TlsSetValue(tlsIndex, windowThread))
@@ -108,6 +126,12 @@ DWORD WINAPI WindowThreadFunction(LPVOID lpParam) {
 	//WH_KEYBOARD_LL hook
 	HHOOK hHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, NULL, 0);
 
+	windowThread->hHook = hHook;
+	// Check if the hook was successfully set
+	if (hHook == NULL) {
+		printf("Failed to set hook. Error: %lu\n", GetLastError());
+		return 1;
+	}
 	// Keep this app running until we're told to stop
 	MSG msg;
 	while (g_Running.load(memory_order_relaxed)) {
@@ -120,64 +144,65 @@ DWORD WINAPI WindowThreadFunction(LPVOID lpParam) {
 			DispatchMessage(&msg);
 		}
 	}
-	
+
 	return 1;
 }
 
 // The callback function for the WH_KEYBOARD_LL hook
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
-		//The wParam and lParam parameters contain information about a keyboard message. (https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc)	
-	//The wParam parameter specifies the virtual-key code of the key that generated the keystroke message.	
-		if (nCode == HC_ACTION) {
-			// Retrieve the WindowThread object from TLS
-			WindowThread* windowThread = (WindowThread*)TlsGetValue(tlsIndex);
-			if (windowThread == nullptr) {
-				wcerr << L"Error: Failed to retrieve TLS value" << endl;
-				return CallNextHookEx(NULL, nCode, wParam, lParam);
-			}
-			
-			PKBDLLHOOKSTRUCT keypress = (PKBDLLHOOKSTRUCT)lParam;
-			// Get the dimension of the monitor
-			DimensionStruct monitorDim = GetMonitorDimension(windowThread->hwnd);
-	
-			// Get the dimension of the window based on the percentage of the monitor
-			WindowDimensionStruct winDim = GetWinDimensionByPercent(monitorDim, 100, 50);
-	
-			switch (wParam) {
-				// The WM_KEYDOWN message is posted to the window with the keyboard focus when a nonsystem key is pressed. A nonsystem key is a key that is pressed when the ALT key is not pressed.
-			case WM_KEYDOWN:
-				if (keypress->vkCode == windowThread->vkCode) {
-					wcout << L"F1 Pressed" << endl;
-					// Get the handle of the window	
-					if (windowThread->isWindowHidden) {
-						// Set the window position and 
-						SetWindowPos(windowThread->hwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_SHOWWINDOW);
-						windowThread->isWindowHidden = false;
-					}
-					else {
-						// Hide the window
-						SetWindowPos(windowThread->hwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_HIDEWINDOW);
-						windowThread->isWindowHidden = true;
-					}
-	
-				}
-				if (windowThread->hwnd == nullptr) {
-					wcerr << L"Error: Window not found" << endl;
-					return 1;
-				}
-	
-				break;
-			case WM_SYSKEYDOWN:
-				break;
-			case WM_KEYUP:
-				break;
-			case WM_SYSKEYUP:
-				break;
-			}
+	//The wParam and lParam parameters contain information about a keyboard message. (https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc)	
+//The wParam parameter specifies the virtual-key code of the key that generated the keystroke message.	
+	if (nCode == HC_ACTION) {
+		// Retrieve the WindowThread object from TLS
+		WindowThread* windowThread = (WindowThread*)TlsGetValue(tlsIndex);
+		if (windowThread == nullptr) {
+			wcerr << L"Error: Failed to retrieve TLS value" << endl;
+			return CallNextHookEx(NULL, nCode, wParam, lParam);
 		}
-		return CallNextHookEx(NULL, nCode, wParam, lParam);
+
+		PKBDLLHOOKSTRUCT keypress = (PKBDLLHOOKSTRUCT)lParam;
+		// Get the dimension of the monitor
+		DimensionStruct monitorDim = GetMonitorDimension(windowThread->hwnd);
+
+		// Get the dimension of the window based on the percentage of the monitor
+		WindowDimensionStruct winDim = GetWinDimensionByPercent(monitorDim, 100, 50);
+
+		switch (wParam) {
+			// The WM_KEYDOWN message is posted to the window with the keyboard focus when a nonsystem key is pressed. A nonsystem key is a key that is pressed when the ALT key is not pressed.
+		case WM_KEYDOWN:
+			if (keypress->vkCode == windowThread->vkCode) {
+				wcout << L"F1 Pressed" << endl;
+				// Get the handle of the window	
+				if (windowThread->isWindowHidden) {
+					// Set the window position and 
+					SetWindowPos(windowThread->hwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_SHOWWINDOW);
+					windowThread->isWindowHidden = false;
+				}
+				else {
+					// Hide the window
+					SetWindowPos(windowThread->hwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_HIDEWINDOW);
+					windowThread->isWindowHidden = true;
+				}
+
+			}
+			if (windowThread->hwnd == nullptr) {
+				wcerr << L"Error: Window not found" << endl;
+				return 1;
+			}
+
+			break;
+		case WM_SYSKEYDOWN:
+			break;
+		case WM_KEYUP:
+			break;
+		case WM_SYSKEYUP:
+			break;
+		}
+	}
+	return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
+// Console handler for graceful shutdown
 BOOL WINAPI consoleHandler(DWORD signal) {
 
 	if (signal == CTRL_C_EVENT || signal == CTRL_CLOSE_EVENT) {
@@ -217,7 +242,7 @@ BOOL WINAPI consoleHandler(DWORD signal) {
 		}
 		printf("Shutdown complete\n");
 		return TRUE;
-		
+
 	}
 	return FALSE;
 }
@@ -241,7 +266,7 @@ int main() {
 		return 1;
 	}
 	toml::table tomlTable = ParseToml("config.toml");
-	
+
 	scratchpadThreads.reserve(tomlTable.size()); // Reserve space for efficiency
 
 	std::cout << tomlTable << "\n";
@@ -261,20 +286,6 @@ int main() {
 			subTable->get_as<std::string>("key")->get()
 		);
 	}
-
-
-	std::cout << tomlTable["Wezterm"]["classname"] << "\n";
-	
-
-	// testing msg
-	for (int i = 0; i < tomlTable.size(); i++) {
-		std::cout << "Window " << i << ":\n";
-		scratchpadThreads[i].winDim.Print();
-		std::cout << "VK Code: " << scratchpadThreads[i].vkCode << "\n";
-	}
-
-
-
 
 	std::cin.get();
 	// Wait for all thread

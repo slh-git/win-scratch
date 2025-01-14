@@ -79,7 +79,7 @@ BOOL CALLBACK EnumDesktopWindowsProc(HWND hwnd, LPARAM lParam) {
     return TRUE; // Continue enumeration
 }
 
-// Print all windows on the desktop
+// Print all windows on the desktop for 
 void PrintDesktopWindows(bool includeChildWindows) {
     // Enumerate all top-level windows
     EnumDesktopWindows(NULL, EnumDesktopWindowsProc, NULL);
