@@ -1,0 +1,9 @@
+Initiating program cleanup...2
+Unhooking keyboard hook for thread: org.wezfurlong.wezterm
+Successfully unhooked keyboard hook for thread
+Unhooking keyboard hook for thread: CASCADIA_HOSTING_WINDOW_CLASS
+Successfully unhooked keyboard hook for thread
+Thread exited successfully
+Received CTRL_C_EVENT
+Thread exited successfully
+Shutdown complete

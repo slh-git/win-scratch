@@ -120,6 +120,7 @@
     <None Include="config.toml" />
     <None Include="packages.config" />
     <None Include="PropertySheet.props" />
+    <Text Include="log.txt" />
     <Text Include="readme.txt">
       <DeploymentContent>false</DeploymentContent>
     </Text>
