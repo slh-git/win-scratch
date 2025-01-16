@@ -1,0 +1,11 @@
+[Wezterm]
+classname = "org.wezfurlong.wezterm"
+height = 100
+width = 50
+key = "VK_F1"
+
+[WindowsTerminal]
+classname = "CASCADIA_HOSTING_WINDOW_CLASS"
+height = 100
+width = 50
+key = "VK_F2"
