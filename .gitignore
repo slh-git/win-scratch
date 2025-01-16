@@ -29,7 +29,7 @@ x86/
 
 # Temporary files
 *.tmp
-*.log
+*.aps
 *.tlog
 *.bak
 *.old
