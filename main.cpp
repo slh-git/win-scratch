@@ -171,14 +171,15 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 			if (keypress->vkCode == windowThread->vkCode) {
 				wcout << L"F1 Pressed" << endl;
 				// Get the handle of the window    
-				if (windowThread->isWindowHidden) {
+				if (windowThread->isWindowHidden || GetForegroundWindow() != windowThread->hwnd) {
 					// Set the window position and 
-					SetWindowPos(windowThread->hwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_SHOWWINDOW);
+					SetWindowPos(windowThread->hwnd, HWND_TOP, 0, 0, winDim.width, winDim.height, SWP_SHOWWINDOW);
+					SetForegroundWindow(windowThread->hwnd);
 					windowThread->isWindowHidden = false;
 				}
 				else {
 					// Hide the window
-					SetWindowPos(windowThread->hwnd, HWND_TOPMOST, 0, 0, winDim.width, winDim.height, SWP_HIDEWINDOW);
+					SetWindowPos(windowThread->hwnd, HWND_TOP, 0, 0, winDim.width, winDim.height, SWP_HIDEWINDOW);
 					windowThread->isWindowHidden = true;
 				}
 
