@@ -32,6 +32,8 @@ struct WindowThread {
 	unsigned int vkCode;
 	HANDLE hThread;
 	bool isWindowHidden;
+	DWORD dwProccess_id;
+	
 	HHOOK hHook;
 	WindowThread() {
 		this->hwnd = nullptr;
@@ -53,6 +55,7 @@ struct WindowThread {
 			printf("Failed to create hthread. Error: %lu\n", GetLastError());
 		}
 		this->isWindowHidden = true;
+		GetWindowThreadProcessId(hwnd, &dwProccess_id);
 	}
 };
 
@@ -144,6 +147,20 @@ DWORD WINAPI WindowThreadFunction(LPVOID lpParam) {
 
 	return 1;
 }
+// Function to set the foreground window to bypass not allowing foreground window to be set
+void SetForegroundWindowEx(HWND hwnd) {
+	DWORD foregroundThreadId = GetWindowThreadProcessId(GetForegroundWindow(), NULL);
+	DWORD currentThreadId = GetCurrentThreadId();
+
+	// 
+	AttachThreadInput(currentThreadId, foregroundThreadId, TRUE);
+
+	// 
+	SetForegroundWindow(hwnd);
+
+	
+	AttachThreadInput(currentThreadId, foregroundThreadId, FALSE);
+}
 
 // The callback function for the WH_KEYBOARD_LL hook
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -171,16 +188,24 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 			if (keypress->vkCode == windowThread->vkCode) {
 				wcout << L"F1 Pressed" << endl;
 				// Get the handle of the window    
-				if (windowThread->isWindowHidden || GetForegroundWindow() != windowThread->hwnd) {
+				if (windowThread->isWindowHidden ) {
 					// Set the window position and 
 					SetWindowPos(windowThread->hwnd, HWND_TOP, 0, 0, winDim.width, winDim.height, SWP_SHOWWINDOW);
-					SetForegroundWindow(windowThread->hwnd);
+					SetForegroundWindowEx(windowThread->hwnd);
 					windowThread->isWindowHidden = false;
+
 				}
 				else {
-					// Hide the window
-					SetWindowPos(windowThread->hwnd, HWND_TOP, 0, 0, winDim.width, winDim.height, SWP_HIDEWINDOW);
-					windowThread->isWindowHidden = true;
+					// if the window is not focused and i press eg: F1, the window will be focused
+					if (!windowThread->isWindowHidden && GetForegroundWindow() != windowThread->hwnd) {
+						SetForegroundWindowEx(windowThread->hwnd);
+					}
+					else {
+						SetWindowPos(windowThread->hwnd, HWND_TOP, 0, 0, winDim.width, winDim.height, SWP_HIDEWINDOW);
+						windowThread->isWindowHidden = true;
+
+					}
+
 				}
 
 			}
