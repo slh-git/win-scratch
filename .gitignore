@@ -75,3 +75,4 @@ Desktop.ini
 
 # Ignore NuGet packages
 packages/
+log.txt

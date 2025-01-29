@@ -154,11 +154,10 @@ void SetForegroundWindowEx(HWND hwnd) {
 
 	// 
 	AttachThreadInput(currentThreadId, foregroundThreadId, TRUE);
-
 	// 
 	SetForegroundWindow(hwnd);
-
-	
+	BringWindowToTop(hwnd);
+	ShowWindow(hwnd, SW_SHOW);
 	AttachThreadInput(currentThreadId, foregroundThreadId, FALSE);
 }
 
