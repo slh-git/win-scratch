@@ -33,8 +33,9 @@ struct WindowThread {
 	HANDLE hThread;
 	bool isWindowHidden;
 	DWORD dwProccess_id;
-	
 	HHOOK hHook;
+	bool isInitialized; // Flag used to check if the thread should save the window dimensions or percentages(used for the first time)
+
 	WindowThread() {
 		this->hwnd = nullptr;
 		this->winDim = { 0,0,0,0 };
@@ -42,6 +43,7 @@ struct WindowThread {
 		this->hThread = nullptr;
 		this->isWindowHidden = true;
 		this->hHook = NULL;
+		this->isInitialized = false;
 	}
 
 	WindowThread(string className, WindowDimensionStruct winDim, string keyName) {
@@ -56,6 +58,7 @@ struct WindowThread {
 		}
 		this->isWindowHidden = true;
 		GetWindowThreadProcessId(hwnd, &dwProccess_id);
+		this->isInitialized = false;
 	}
 };
 
@@ -137,7 +140,8 @@ DWORD WINAPI WindowThreadFunction(LPVOID lpParam) {
 	while (g_Running.load(memory_order_relaxed)) {
 		// Process messages in the queue
 		if (PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE)) {
-			if (msg.message == WM_QUIT) {
+			//if (msg.message == WM_QUIT) {
+			if (GetMessage(&msg, NULL, 0, 0)) {
 				break;
 			}
 			TranslateMessage(&msg);
@@ -176,10 +180,13 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
 		PKBDLLHOOKSTRUCT keypress = (PKBDLLHOOKSTRUCT)lParam;
 		// Get the dimension of the monitor
-		DimensionStruct monitorDim = GetMonitorDimension(windowThread->hwnd);
+		DimensionStruct monitorDim = GetMonitorDimensionPixel(windowThread->hwnd);
 
-		// Get the dimension of the window based on the percentage of the monitor
-		WindowDimensionStruct winDim = GetWinDimensionByPercent(monitorDim, 100, 50);
+		if (windowThread->isInitialized == false) {
+			// Get the dimension of the window based on the percentage of the monitor
+			windowThread->winDim = GetWinDimensionPixels(monitorDim, windowThread->winDim.width, windowThread->winDim.height);
+			windowThread->isInitialized = true;
+		}
 
 		switch (wParam) {
 			// The WM_KEYDOWN message is posted to the window with the keyboard focus when a nonsystem key is pressed. A nonsystem key is a key that is pressed when the ALT key is not pressed.
@@ -189,7 +196,7 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 				// Get the handle of the window    
 				if (windowThread->isWindowHidden ) {
 					// Set the window position and 
-					SetWindowPos(windowThread->hwnd, HWND_TOP, 0, 0, winDim.width, winDim.height, SWP_SHOWWINDOW);
+					SetWindowPos(windowThread->hwnd, HWND_TOP, 0, 0, windowThread->winDim.width, windowThread->winDim.height, SWP_SHOWWINDOW);
 					SetForegroundWindowEx(windowThread->hwnd);
 					windowThread->isWindowHidden = false;
 
@@ -200,7 +207,22 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 						SetForegroundWindowEx(windowThread->hwnd);
 					}
 					else {
-						SetWindowPos(windowThread->hwnd, HWND_TOP, 0, 0, winDim.width, winDim.height, SWP_HIDEWINDOW);
+						// Update the dimension of the window if changed
+						// Gets curr window dimension in rect 
+						RECT rect;
+						if (GetWindowRect(windowThread->hwnd, &rect))
+						{
+							int width = rect.right - rect.left;
+							int height = rect.bottom - rect.top;
+							if (width != windowThread->winDim.width || height != windowThread->winDim.height) {
+								windowThread->winDim.width = width;
+								windowThread->winDim.height = height;
+								wcout << L"Window dimensions updated: width=" << windowThread->winDim.width << L", height=" << windowThread->winDim.height << endl;
+
+							}
+						}
+						// Hide the window
+						SetWindowPos(windowThread->hwnd, HWND_TOP, 0, 0, windowThread->winDim.width, windowThread->winDim.height, SWP_HIDEWINDOW);
 						windowThread->isWindowHidden = true;
 
 					}
@@ -356,14 +378,12 @@ int main() {
 		);
 	}
 
-	std::cin.get();
+	/*std::cin.get();*/
+	char ch;
+	ch = std::cin.get();
 	// Wait for all thread
 	ProgramCleanup(2);
-	//for (auto& thread : scratchpadThreads) {
-	//    WaitForSingleObject(thread.hThread, INFINITE);
-	//    CloseHandle(thread.hThread);
-	//}
-	//TlsFree(tlsIndex);
+
 
 	return 0;
 }
