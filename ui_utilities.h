@@ -146,7 +146,7 @@ struct WindowDimensionStruct {
 };
 
 // Get the dimension of the monitor
-DimensionStruct GetMonitorDimension(HWND hwnd) {
+DimensionStruct GetMonitorDimensionPixel(HWND hwnd) {
     HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
 
     MONITORINFO mi;
@@ -167,8 +167,14 @@ DimensionStruct GetMonitorDimension(HWND hwnd) {
 }
 
 // Get the dimension of the window based on the percentage of the monitor
-WindowDimensionStruct GetWinDimensionByPercent(DimensionStruct monitorDim, int widthPercentage, int heightPercentage) {
+WindowDimensionStruct GetWinDimensionPixels(DimensionStruct monitorDim, int widthPercentage, int heightPercentage) {
     return WindowDimensionStruct(
         monitorDim.width * widthPercentage / 100,
         monitorDim.height * heightPercentage / 100);
+}
+
+WindowDimensionStruct GetWindowDimensionPercent(DimensionStruct monitorDim, int windowWidthPx, int windowHeightPx) {
+	return WindowDimensionStruct(
+		windowWidthPx * 100 / monitorDim.width,
+		windowHeightPx * 100 / monitorDim.height);
 }
