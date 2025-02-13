@@ -137,7 +137,8 @@ DWORD WINAPI WindowThreadFunction(LPVOID lpParam) {
 	while (g_Running.load(memory_order_relaxed)) {
 		// Process messages in the queue
 		if (PeekMessage(&msg, NULL, NULL, NULL, PM_REMOVE)) {
-			if (msg.message == WM_QUIT) {
+			//if (msg.message == WM_QUIT) {
+			if (GetMessage(&msg, NULL, 0, 0)) {
 				break;
 			}
 			TranslateMessage(&msg);
@@ -179,7 +180,7 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 		DimensionStruct monitorDim = GetMonitorDimension(windowThread->hwnd);
 
 		// Get the dimension of the window based on the percentage of the monitor
-		WindowDimensionStruct winDim = GetWinDimensionByPercent(monitorDim, 100, 50);
+		WindowDimensionStruct winDim = GetWinDimensionByPercent(monitorDim, windowThread->winDim.width, windowThread->winDim.height);
 
 		switch (wParam) {
 			// The WM_KEYDOWN message is posted to the window with the keyboard focus when a nonsystem key is pressed. A nonsystem key is a key that is pressed when the ALT key is not pressed.
@@ -356,14 +357,14 @@ int main() {
 		);
 	}
 
-	std::cin.get();
+	/*std::cin.get();*/
+	char ch;
+	do {
+		ch = std::cin.get();
+	} while (ch != 'q');
 	// Wait for all thread
 	ProgramCleanup(2);
-	//for (auto& thread : scratchpadThreads) {
-	//    WaitForSingleObject(thread.hThread, INFINITE);
-	//    CloseHandle(thread.hThread);
-	//}
-	//TlsFree(tlsIndex);
+
 
 	return 0;
 }
