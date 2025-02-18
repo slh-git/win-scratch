@@ -379,8 +379,13 @@ int main() {
 	}
 
 	/*std::cin.get();*/
+
 	char ch;
-	ch = std::cin.get();
+	do {
+		system("pause");
+		cout << '\n' << "Enter q to exit:";
+		ch = std::cin.get();
+	} while (ch != 'q');
 	// Wait for all thread
 	ProgramCleanup(2);
 
